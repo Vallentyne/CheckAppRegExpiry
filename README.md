@@ -1,299 +1,124 @@
-# Entra ID Certificate Expiry Monitor
+# Certificate Expiry Monitor - Logic App Solution
 
-Azure Function that monitors Entra ID (Azure AD) app registration certificate and client secret expiry, sending alerts to Microsoft Teams.
+This solution uses **Azure Logic App** to monitor Entra ID app registration certificate and client secret expiry, sending email alerts when credentials are expiring soon.
 
-## Features
+## ✅ Benefits of Logic App Approach
 
-- ✅ Monitors both certificates and client secrets
-- ✅ Configurable warning threshold (default: 30 days)
-- ✅ Sends formatted alerts to Microsoft Teams
-- ✅ Runs on schedule (default: daily at 9 AM UTC)
-- ✅ Uses Managed Identity for secure authentication
-- ✅ Color-coded alerts based on urgency
+- ✅ **No code deployment issues** - Created entirely in Azure Portal
+- ✅ **Built-in email connector** - Uses Office 365 Outlook (no SMTP config)
+- ✅ **Visual workflow** - Easy to understand and modify
+- ✅ **Managed Identity** - Secure authentication to Microsoft Graph
+- ✅ **Native Microsoft Graph** - Direct API calls without SDK dependencies
 
-## Prerequisites
+## 🚀 Quick Deployment
 
-1. **Azure Subscription**
-2. **Azure CLI** - [Install](https://docs.microsoft.com/cli/azure/install-azure-cli)
-3. **Azure Functions Core Tools** - [Install](https://docs.microsoft.com/azure/azure-functions/functions-run-local)
-4. **Python 3.9+**
-5. **Teams Incoming Webhook** - [Setup Instructions](#setup-teams-webhook)
+### Prerequisites
+- Azure subscription with permissions to create Logic Apps
+- Email address to receive alerts (Office 365/Outlook account recommended)
 
-## Setup Teams Webhook
-
-1. In Microsoft Teams, go to the channel where you want to receive alerts
-2. Click the **•••** (More options) next to the channel name
-3. Select **Connectors** (or **Workflows** in newer Teams)
-4. Search for **Incoming Webhook** and click **Add** or **Configure**
-5. Give it a name like "Certificate Expiry Alerts"
-6. Copy the webhook URL (starts with `https://outlook.office.com/webhook/...` or similar)
-7. Save the URL for later configuration
-
-## Local Development
-
-### 1. Install Dependencies
+### Deploy
 
 ```powershell
-cd c:\Code\JDCP\Alerts
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+cd c:\Code\JDCP\Alerts\LogicApp
+
+# Deploy the Logic App
+.\Deploy-LogicApp.ps1 -EmailRecipient "your.email@yourdomain.com" -WarningDays 30
 ```
 
-### 2. Configure Settings
-
-Edit `local.settings.json`:
-```json
-{
-  "IsEncrypted": false,
-  "Values": {
-    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
-    "FUNCTIONS_WORKER_RUNTIME": "python",
-    "WARNING_DAYS": "30",
-    "TEAMS_WEBHOOK_URL": "https://your-teams-webhook-url"
-  }
-}
-```
-
-### 3. Authenticate with Azure
-
-```powershell
-az login
-```
-
-### 4. Run Locally
-
-```powershell
-func start
-```
-
-To manually trigger the function:
-```powershell
-# In another terminal
-curl http://localhost:7071/admin/functions/CertExpiryMonitor
-```
-
-## Deploy to Azure
-
-### 1. Create Azure Resources
-
-```powershell
-# Set variables
-$resourceGroup = "rg-cert-monitor"
-$location = "eastus"
-$storageAccount = "stcertmonitor$(Get-Random -Maximum 9999)"
-$functionApp = "func-cert-expiry-monitor"
-
-# Create resource group
-az group create --name $resourceGroup --location $location
-
-# Create storage account
-az storage account create `
-  --name $storageAccount `
-  --resource-group $resourceGroup `
-  --location $location `
-  --sku Standard_LRS
-
-# Create function app (Python 3.11)
-az functionapp create `
-  --resource-group $resourceGroup `
-  --consumption-plan-location $location `
-  --runtime python `
-  --runtime-version 3.11 `
-  --functions-version 4 `
-  --name $functionApp `
-  --storage-account $storageAccount `
-  --os-type Linux
-```
-
-### 2. Enable Managed Identity
-
-```powershell
-# Enable system-assigned managed identity
-az functionapp identity assign `
-  --name $functionApp `
-  --resource-group $resourceGroup
-
-# Get the principal ID (save this)
-$principalId = az functionapp identity show `
-  --name $functionApp `
-  --resource-group $resourceGroup `
-  --query principalId -o tsv
-
-Write-Host "Managed Identity Principal ID: $principalId"
-```
-
-### 3. Grant Permissions to Managed Identity
-
-```powershell
-# Assign "Application.Read.All" permission in Microsoft Graph
-# This requires Global Administrator or Privileged Role Administrator
-
-# Get the Microsoft Graph service principal ID
-$graphAppId = "00000003-0000-0000-c000-000000000000"
-$graphSp = az ad sp show --id $graphAppId | ConvertFrom-Json
-
-# Get the Application.Read.All role ID
-$appRoleId = "9a5d68dd-52b0-4cc2-bd40-abcf44ac3a30"  # Application.Read.All
-
-# Grant the permission
-az rest --method POST `
-  --uri "https://graph.microsoft.com/v1.0/servicePrincipals/$($graphSp.id)/appRoleAssignments" `
-  --headers "Content-Type=application/json" `
-  --body "{`"principalId`":`"$principalId`",`"resourceId`":`"$($graphSp.id)`",`"appRoleId`":`"$appRoleId`"}"
-```
+### Manual Steps After Deployment
 
-### 4. Configure Application Settings
+1. **Authorize Office 365 Connection**
+   - Portal will provide the URL
+   - Click "Edit API connection" → "Authorize"
+   - Sign in with your Office 365 account
+   - Click "Save"
 
-```powershell
-# Set the Teams webhook URL (replace with your actual webhook)
-az functionapp config appsettings set `
-  --name $functionApp `
-  --resource-group $resourceGroup `
-  --settings "TEAMS_WEBHOOK_URL=https://your-teams-webhook-url" "WARNING_DAYS=30"
-```
+2. **Test the Logic App**
+   - Go to Logic App in Azure Portal
+   - Click "Run Trigger" → "Recurrence"
+   - Check your email for the alert
 
-### 5. Deploy the Function
+## 📋 What It Does
 
-```powershell
-# From the project directory
-func azure functionapp publish $functionApp
-```
+1. **Runs Daily at 9 AM UTC** (configurable in the Logic App designer)
+2. **Queries Microsoft Graph** for all app registrations
+3. **Checks Certificates & Secrets** for expiry within threshold
+4. **Sends Email** if any credentials are expiring
+5. **Includes Details**: App name, credential type, expiry date, days remaining
 
-## Configuration
+## 🎨 Email Format
 
-### Environment Variables
+The email includes:
+- Total count of expiring credentials
+- HTML table with full details
+- Color-coded by urgency
+- Direct link to Azure Portal
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `TEAMS_WEBHOOK_URL` | Microsoft Teams incoming webhook URL | *Required* |
-| `WARNING_DAYS` | Days before expiry to trigger alert | 30 |
+## ⚙️ Configuration
 
-### Timer Schedule
+### Change Schedule
+In Azure Portal → Logic App → Logic App Designer:
+- Click the "Recurrence" trigger
+- Modify frequency, interval, time zone, hours/minutes
 
-The function runs based on a cron expression in [function.json](CertExpiryMonitor/function.json):
+### Change Warning Days
+In Azure Portal → Logic App → Logic App Designer:
+- Go to "Parameters" section
+- Modify `warningDays` parameter value
 
-```json
-"schedule": "0 0 9 * * *"
-```
+### Change Email Recipient
+In Azure Portal → Logic App → Logic App Designer:
+- Click "Send Email" action
+- Modify "To" field
 
-**Current: Daily at 9:00 AM UTC**
+## 🔧 Troubleshooting
 
-Common schedules:
-- `0 0 9 * * *` - Daily at 9 AM UTC
-- `0 0 9 * * 1` - Weekly on Monday at 9 AM UTC
-- `0 0 9 1 * *` - Monthly on the 1st at 9 AM UTC
-- `0 */6 * * *` - Every 6 hours
+### No email received
+- Check Logic App run history for errors
+- Verify Office 365 connection is authorized
+- Check Microsoft Graph permissions (Application.Read.All)
 
-## Monitoring
+### Permission errors
+- Ensure Managed Identity has Application.Read.All permission
+- Wait 5-10 minutes after granting permissions
+- Verify in Azure Portal → Enterprise Applications
 
-### View Logs in Azure
+### Email shows empty table
+- Logic App found no expiring credentials (good news!)
+- Or check run history for API call errors
 
-```powershell
-# Stream logs in real-time
-az webapp log tail --name $functionApp --resource-group $resourceGroup
+## 📊 Monitoring
 
-# Or view in Azure Portal
-# Navigate to Function App > Functions > CertExpiryMonitor > Monitor
-```
+View execution history:
+1. Azure Portal → Logic App
+2. Click "Runs history"
+3. Click any run to see detailed execution
 
-### Application Insights
+## 🔐 Security
 
-For production monitoring, enable Application Insights:
+- Uses Managed Identity (no passwords/secrets)
+- Least privilege (Application.Read.All only)
+- Office 365 connection secured per-user
 
-```powershell
-az monitor app-insights component create `
-  --app $functionApp `
-  --location $location `
-  --resource-group $resourceGroup
+## 💰 Cost
 
-# Get the instrumentation key
-$aiKey = az monitor app-insights component show `
-  --app $functionApp `
-  --resource-group $resourceGroup `
-  --query instrumentationKey -o tsv
+- Logic App: ~$0.10 per day (standard pricing)
+- Executions: Very low (once per day)
+- Estimated monthly cost: **~$3/month**
 
-# Configure the function app
-az functionapp config appsettings set `
-  --name $functionApp `
-  --resource-group $resourceGroup `
-  --settings "APPINSIGHTS_INSTRUMENTATIONKEY=$aiKey"
-```
+## 🔄 Alternative Email Options
 
-## Teams Alert Example
+If you don't have Office 365, you can modify the Logic App to use:
+- **SendGrid** connector
+- **Gmail** connector  
+- **HTTP** action to any SMTP API
 
-When certificates are expiring, you'll receive a Teams message like:
+## 📝 Files
 
-```
-🔐 Entra ID Certificate Expiry Alert
+- `logic-app-template.json` - ARM template for deployment
+- `Deploy-LogicApp.ps1` - PowerShell deployment script
+- `README-LogicApp.md` - This file
 
-Found 3 app registration credentials expiring within 30 days
+---
 
-My API Application
-App ID: 12345678-1234-1234-1234-123456789abc
-Credential: Production Certificate
-Status: EXPIRING SOON
-Expires: 2025-12-25 10:30:00 UTC
-Days Remaining: 7
-
-[View App Registrations]
-```
-
-## Troubleshooting
-
-### "No applications found"
-- Ensure the Managed Identity has `Application.Read.All` permission
-- Wait 5-10 minutes after granting permissions for changes to propagate
-
-### "TEAMS_WEBHOOK_URL environment variable is not set"
-- Add the webhook URL to application settings (see Configuration section)
-
-### Authentication Errors
-- For local development, ensure you're logged in with `az login`
-- For Azure deployment, verify Managed Identity is enabled and has correct permissions
-
-### Manual Test
-```powershell
-# Trigger the function manually via HTTP
-$functionKey = az functionapp keys list `
-  --name $functionApp `
-  --resource-group $resourceGroup `
-  --query functionKeys.default -o tsv
-
-Invoke-RestMethod -Uri "https://$functionApp.azurewebsites.net/admin/functions/CertExpiryMonitor" `
-  -Headers @{"x-functions-key"=$functionKey} `
-  -Method Post
-```
-
-## Security Best Practices
-
-1. ✅ **Use Managed Identity** - No passwords or keys in code
-2. ✅ **Least Privilege** - Only `Application.Read.All` permission granted
-3. ✅ **Secure Webhook** - Store Teams webhook URL in App Settings, not code
-4. ✅ **Private Endpoints** - Consider using VNet integration for production
-5. ✅ **Monitor Access** - Review Activity Logs regularly
-
-## Cost Estimation
-
-- **Azure Function (Consumption Plan)**: ~$0.20/month (minimal executions)
-- **Storage Account**: ~$0.05/month
-- **Total**: ~$0.25/month
-
-## Next Steps
-
-- [ ] Set up Application Insights for advanced monitoring
-- [ ] Add email notifications as backup
-- [ ] Create Azure Dashboard for certificate inventory
-- [ ] Implement automated certificate renewal (if applicable)
-- [ ] Add exception list for certain apps
-
-## Support
-
-For issues or questions:
-1. Check the [Troubleshooting](#troubleshooting) section
-2. Review Azure Function logs
-3. Verify Microsoft Graph API permissions
-
-## License
-
-MIT
+**Next**: Run the deployment script with your email address!
