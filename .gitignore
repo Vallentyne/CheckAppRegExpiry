@@ -1,0 +1,23 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Azure Functions artifacts
+bin
+obj
+appsettings.json
+local.settings.json
+
+# Python virtual environment
+.venv
+.env
+venv/
+env/
+
+# VS Code
+
+# Azure Functions Core Tools
+.azurefunctions/
+
+.python_packages
